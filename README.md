@@ -4,6 +4,8 @@ Notes about my TDS684A oscilloscope
 
 ## Memory Map
 
+The memory bus, from the perspective of the MC68020 CPU
+
 ```
 0x0000_0000 - 0x0004_0000: BootRom "160-9335-00". The ROM itself is 256KiB but only <32K is actually used. Unsure how much is physically mapped.
 0x0020_0000 - 0x0024_0000: SRAM (M5M51008AFP-10LL (100ns) x2, totaling 256KiB)
