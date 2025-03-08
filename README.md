@@ -1,11 +1,17 @@
 # TDS684A
 Notes about my TDS684A oscilloscope
 
-@tomverbeure's TDS420A reversing notes:
+@tomverbeure's TDS420A notes: (there's a lot of similarity here)
+
+https://tomverbeure.github.io/2020/06/27/In-the-Lab-Tektronix-TDS420A.html
+
+https://tomverbeure.github.io/2020/06/27/Tektronix-TDS420A-Remote-Control-over-GPIB.html
 
 https://tomverbeure.github.io/2020/07/02/Extracting-the-Tektronix-TDS420A-Firmware.html
 
 https://tomverbeure.github.io/2020/07/03/TDS420A-Serial-Debug-Console-Symbol-Table-Ghidra.html
+
+https://tomverbeure.github.io/2020/07/11/Option-Hacking-the-Tektronix-TDS-420A.html
 
 ## Memory Map
 
