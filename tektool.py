@@ -21,20 +21,47 @@ def escape(data: bytes) -> bytes:
 	return data
 
 def read_memory(ser: serial.Serial, addr: int, length: int):
-	ser.read_all() # flush input buffer
-	mycmd = cmd_read_memory(addr, length)
-	print(mycmd)
-	ser.write(escape(mycmd) + b"\n")
-	ser.flush()
-	ser.write(b"++read\n")
-	ser.flush()
-	ack = ser.read(1)
-	print("ack", ack)
-	assert(ack == b"+")
-	cmd = ser.read(1)
+	while True:
+		ser.read_all() # flush input buffer
+		mycmd = cmd_read_memory(addr, length)
+		print(mycmd)
+		ser.write(escape(mycmd) + b"\n")
+		ser.flush()
+		ser.write(b"++read\n")
+		ser.flush()
+		ack = ser.read(1)
+		print("ack", ack)
+		if ack == b"+":
+			break
+		#assert(ack == b"+")
+		ser.write(b"\n")
+		ser.write(b"++ver\n")
+		print("ver", ser.readline())
+		time.sleep(0.5)
+		ser.setDTR(True)
+		time.sleep(0.5)
+		ser.setDTR(False)
+		time.sleep(2)
+		ser.write(b"++ver\n")
+		print("ver", ser.readline())
+		ser.write(b"++addr 29\n") # actually it needs this I guess, in "firmware update mode"
+		ser.write(b"++eor 7\n")  # when receiving, end only on EOI
+		ser.write(b"++eos 3\n")  # when sending, do not end with any characters
+		ser.write(b"++eoi 1\n")  # when sending, end with EOI
+
+		time.sleep(1)
+		ack = ser.read(1)
+		print("ack2", ack)
+		if ack == b"+":
+			break
+	while True:
+		cmd = ser.read(1)
+		print("cmd", cmd)
+		assert(cmd)
+		if cmd == b"=":
+			break
+	#assert(cmd == b"=")
 	csum = ser.read(1)[0]
-	print("cmd", cmd)
-	assert(cmd == b"=")
 	length_bytes = ser.read(2)
 	length_out = int.from_bytes(length_bytes)
 	assert(length_out == length)
@@ -47,7 +74,7 @@ def read_memory(ser: serial.Serial, addr: int, length: int):
 	ser.write(escape(b"+") + b"\n") # ack
 	return data
 
-with serial.Serial("/dev/ttyUSB0", 115200, timeout=1) as ser:
+with serial.Serial("/dev/ttyUSB0", 115200, timeout=5) as ser:
 	time.sleep(2) # wait for the arduino to wake up
 
 	# check the serial->GPIB adapter is alive
@@ -75,13 +102,13 @@ with serial.Serial("/dev/ttyUSB0", 115200, timeout=1) as ser:
 			raise Exception("could not read scope version")
 		print("Scope version:", scope_ver.decode().strip())
 
-	dump_addr = 0x0
-	dump_len = 0x40000
-	BLOCK_SIZE = 0x207 # 0x400 is max that works
+	dump_addr = 0#0x0100_a000
+	dump_len = 0x4_0000
+	BLOCK_SIZE = 0x400 # 0x400 is max that works
 	with open(f"{hex(dump_addr)}-{hex(dump_addr+dump_len)}.bin", "wb") as outfile:
 		for i in tqdm(range(0, dump_len, BLOCK_SIZE)):
 			# TODO: don't overread if last block is small
-			time.sleep(1.5) # unfortunately this seems to be necessary
+			time.sleep(0.3) # unfortunately this seems to be necessary
 			res = read_memory(ser, dump_addr+i, BLOCK_SIZE)
 			outfile.write(res)
 			outfile.flush()
@@ -100,4 +127,13 @@ b'm\x8d\x00\x08\x00\x00\x0b\x0b\x00\x00\x01\x01'
 b'm\x87\x00\x08\x00\x00\x05\n\x00\x00\x01\x02'
 
 b'mV\x00\x08\x00\x000\xa8\x00\x00\x02\x07'
+
+b'm\x12\x00\x08\x01\x00\x98\x00\x00\x00\x04\x00'
+
+hmm, I was able to dump the 0x20_0000 range without any issues, with this config:
+	dump_addr = 0x20_0000
+	dump_len = 0x4_0000
+	BLOCK_SIZE = 0x400 # 0x400 is max that works
+
+(with 1.5s loop delay, also fine on 0.3)
 """

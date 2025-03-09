@@ -27,5 +27,5 @@ The memory bus, from the perspective of the MC68020 CPU
 0x0080_0000 - 0x????_????: config DIP switches
 0x00a0_0000 - 0x00a0_000f: RS232 UART - MC68681
 0x00c0_0000 - 0x00c0_000f: Debug UART - Supposed to be a MC68681 but there isn't one present by default!
-0x0100_0000 - 0x012f_ffff: FlashRom - Am28F020 256KiB, x12 (!), totaling 3MiB
+0x0100_0000 - 0x012f_ffff: FlashRom - Am28F020 256KiB (90ns), x12 (!), totaling 3MiB
 ```
