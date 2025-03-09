@@ -102,8 +102,8 @@ with serial.Serial("/dev/ttyUSB0", 115200, timeout=5) as ser:
 			raise Exception("could not read scope version")
 		print("Scope version:", scope_ver.decode().strip())
 
-	dump_addr = 0#0x0100_a000
-	dump_len = 0x4_0000
+	dump_addr = 0x0040_0000
+	dump_len = 0xa_0000
 	BLOCK_SIZE = 0x400 # 0x400 is max that works
 	with open(f"{hex(dump_addr)}-{hex(dump_addr+dump_len)}.bin", "wb") as outfile:
 		for i in tqdm(range(0, dump_len, BLOCK_SIZE)):
