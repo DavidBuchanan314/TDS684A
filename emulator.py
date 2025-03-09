@@ -47,9 +47,9 @@ def hook_intr(uc: Uc, foo, user_data):
 		sr = int.from_bytes(uc.mem_read(sp, 2))
 		pc = int.from_bytes(uc.mem_read(sp+2, 4))
 		# "vector offset" here, see MC68020 datasheet "6.4 EXCEPTION STACK FRAME FORMAT"
-		print("sp", hex(sp))
-		print("sr", hex(sr))
-		print("pc", hex(pc))
+		#print("sp", hex(sp))
+		#print("sr", hex(sr))
+		#print("pc", hex(pc))
 		uc.reg_write(UC_M68K_REG_A7, sp+8) # pop
 		uc.reg_write(UC_M68K_REG_SR, sr)
 		uc.reg_write(UC_M68K_REG_PC, pc)
@@ -112,7 +112,8 @@ class MC68681:
 		#print(hex(uc.reg_read(UC_M68K_REG_PC)))
 		if offset == 3:
 			#print("UART:", repr(chr(value)))
-			sys.stdout.buffer.write(bytes([value]))
+			sys.stderr.buffer.write(bytes([value]))
+			sys.stderr.flush()
 			return
 		print("MC68681 WRITE:", hex(offset), hex(value))
 		#uc.emu_stop()
@@ -192,11 +193,12 @@ class ScopeEmu():
 	def run(self):
 		self.running = True
 
-		cycles_per_invocation = 400000
+		cycles_per_invocation = 10000
+		self.i = 0
 
 		try:
 			while self.running:
-				#self.mu.ctl_flush_tb()  # unfortunately this seems to be necessary - perhaps a qemu/unicorn bug
+				self.mu.ctl_flush_tb()  # unfortunately this seems to be necessary - perhaps a qemu/unicorn bug
 				self.mu.emu_start(self.mu.reg_read(UC_M68K_REG_PC), 0, 0, cycles_per_invocation) # TODO: determine reasonable "count" and/or timeout
 				self.cycles += cycles_per_invocation
 				#print("TICK")
@@ -206,21 +208,24 @@ class ScopeEmu():
 					print("TICK")
 					#interrupt = 0x78
 					#interrupt = 0x68
-					interrupt = 30
 					orig_sr = self.mu.reg_read(UC_M68K_REG_SR)
-					orig_pc = self.mu.reg_read(UC_M68K_REG_PC)
-					orig_sp = self.mu.reg_read(UC_M68K_REG_A7)
 					print("orig_sr", hex(orig_sr))
-					print("orig_pc", hex(orig_pc))
-					sp = orig_sp - 8
-					self.mu.mem_write(sp, orig_sr.to_bytes(2) + orig_pc.to_bytes(4) + (interrupt * 4).to_bytes(2))
-					vbr = 0x5000000 #self.mu.msr_read(M68K_CR_VBR)
-					vector = int.from_bytes(self.mu.mem_read(vbr + interrupt*4, 4))
-					print("new sp", hex(sp))
-					print("vector", hex(vector))
-					self.mu.reg_write(UC_M68K_REG_SR, ((orig_sr & 0x0700 )| 0x2700)) # is this correct?
-					self.mu.reg_write(UC_M68K_REG_PC, vector)
-					self.mu.reg_write(UC_M68K_REG_A7, sp)
+					interrupt = 30 # works
+					#interrupt = 25 + (self.i%7)
+					self.i += 1
+					if 1 or not orig_sr & 0x0700:
+						orig_pc = self.mu.reg_read(UC_M68K_REG_PC)
+						orig_sp = self.mu.reg_read(UC_M68K_REG_A7)
+						#print("orig_pc", hex(orig_pc))
+						sp = orig_sp - 8
+						self.mu.mem_write(sp, orig_sr.to_bytes(2) + orig_pc.to_bytes(4) + (interrupt * 4).to_bytes(2))
+						vbr = 0x5000000 #self.mu.msr_read(M68K_CR_VBR)
+						vector = int.from_bytes(self.mu.mem_read(vbr + interrupt*4, 4))
+						#print("new sp", hex(sp))
+						#print("vector", hex(vector))
+						self.mu.reg_write(UC_M68K_REG_SR, ((orig_sr & 0x0700 )| 0x2700)) # is this correct?
+						self.mu.reg_write(UC_M68K_REG_PC, vector)
+						self.mu.reg_write(UC_M68K_REG_A7, sp)
 				
 		except UcError as e:
 			print(e)
