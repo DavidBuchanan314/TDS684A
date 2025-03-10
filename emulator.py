@@ -6,6 +6,8 @@ Interrupt 0x78 drives the task scheduler
 from unicorn import *
 from unicorn.m68k_const import *
 import sys
+import time
+import socket
 
 M68K_CR_VBR = 0x801
 
@@ -26,12 +28,73 @@ FLASHROM_SIZE = 0x0030_0000
 def hook_code(uc, address, size, user_data):
 	print(">>> Tracing instruction at 0x%x, instruction size = 0x%x" % (address, size))
 
-def hook_block(uc: Uc, address, idk, user_data):
+def hook_block(uc: Uc, address, idk, emu: "ScopeEmu"):
 	#print(hex(address))#, hex(uc.reg_read(UC_M68K_REG_A7)))#, symbol_lookup.get(address))
-	if address == 0x10027ac:
-		print("HIT _sysClkRoutine")
+	#if address == 0x10027ac:
+	#	print("HIT _sysClkRoutine")
+	if address == 0x11ea22e:# _iosWrite
+		print("_iosWrite")
+		sp = uc.reg_read(UC_M68K_REG_A7)
+		retaddr = int.from_bytes(uc.mem_read(sp, 4))
+		fd = int.from_bytes(uc.mem_read(sp+4, 4))
+		buf = int.from_bytes(uc.mem_read(sp+8, 4))
+		length = int.from_bytes(uc.mem_read(sp+12, 4))
+		if fd == 1: # stdout
+			data = uc.mem_read(buf, length)
+			emu.stdout_log.write(data)
+			emu.stdout_log.flush()
+			emu.stdout.write(data)
+			emu.stdout.flush()
+			#print(hex(retaddr), fd, hex(buf), len)
+			# return
+			uc.reg_write(UC_M68K_REG_D0, length)
+			uc.reg_write(UC_M68K_REG_A7, sp+4) # pop
+			uc.reg_write(UC_M68K_REG_PC, retaddr)
+	elif address == 0x11ea17c:
+		print("_iosRead")
+		sp = uc.reg_read(UC_M68K_REG_A7)
+		retaddr = int.from_bytes(uc.mem_read(sp, 4))
+		fd = int.from_bytes(uc.mem_read(sp+4, 4))
+		buf = int.from_bytes(uc.mem_read(sp+8, 4))
+		length = int.from_bytes(uc.mem_read(sp+12, 4))
+		if fd == 0: # stdin
+			print(fd, hex(buf), length)
+			recvd = emu.stdin.read(length)
+			uc.mem_write(buf, recvd)
+			#time.sleep(1000)
+			#print(hex(retaddr), fd, hex(buf), len)
+			# return
+			uc.reg_write(UC_M68K_REG_D0, len(recvd))
+			uc.reg_write(UC_M68K_REG_A7, sp+4) # pop
+			uc.reg_write(UC_M68K_REG_PC, retaddr)
+
 	elif address == 0x1218ee4:
 		print("HIT _tickAnnounce")
+	#elif address == 0x11e7608:
+	#	print("HIT _hashLibInit")
+	#	#time.sleep(10000)
+	#elif address == 0x100815a:
+	#	print("HIT _printLogo")
+	#	time.sleep(10000)
+	#elif address == 0x0100b59e:
+	#	print("HIT FUN_0100b59e")
+	#	time.sleep(10000)
+	#elif address == 0x11f47f8:
+	#	print("HIT _shellInit")
+	#	time.sleep(10000)
+	elif address == 0x1001594:
+		print("HIT _scopeExec")
+		#ret - stubs out diagnostics + smalltalk
+		sp = uc.reg_read(UC_M68K_REG_A7)
+		print("sp", hex(sp))
+		retaddr = int.from_bytes(uc.mem_read(sp, 4))
+		uc.reg_write(UC_M68K_REG_D0, 0) # return fake success
+		uc.reg_write(UC_M68K_REG_A7, sp+4) # pop
+		uc.reg_write(UC_M68K_REG_PC, retaddr)
+		#time.sleep(10000)
+	elif address == 0x11d3a12:
+		print("HIT _main")
+		time.sleep(10000)
 	if 0:#(address == 0x1001dc6 and False) or address == 0x0100a508: # board ID, RAM test
 		print("oops")
 		sp = uc.reg_read(UC_M68K_REG_A7)
@@ -50,10 +113,12 @@ def hook_intr(uc: Uc, intno: int, emu: "ScopeEmu"):
 		#print(uc.mem_read(sp-0x10, 0x20).hex())
 		sr = int.from_bytes(uc.mem_read(sp, 2))
 		pc = int.from_bytes(uc.mem_read(sp+2, 4))
+		vector_offset = int.from_bytes(uc.mem_read(sp+6, 2))
+		print("vector_offset", hex(vector_offset))
 		# "vector offset" here, see MC68020 datasheet "6.4 EXCEPTION STACK FRAME FORMAT"
 		#print("sp", hex(sp))
 		#print("sr", hex(sr))
-		#print("pc", hex(pc))
+		print("pc", hex(pc))
 		uc.reg_write(UC_M68K_REG_A7, sp+8) # pop
 		uc.reg_write(UC_M68K_REG_SR, sr)
 		uc.reg_write(UC_M68K_REG_PC, pc)
@@ -83,7 +148,7 @@ def dip_switch_read(uc, offset: int, size: int, user_data) -> int:
 	assert(size == 1)
 	print("DIP switch read")
 	#return 0x20 # 0x20 is "normal" config
-	return 0xc0 # skip all bootrom tests
+	return 0xc0 # skip all bootrom tests, skip startup diagnostics
 
 class MC68681:
 	def __init__(self, base, emu: "ScopeEmu"):
@@ -125,6 +190,8 @@ class MC68681:
 			#print("UART:", repr(chr(value)))
 			sys.stderr.buffer.write(bytes([value]))
 			sys.stderr.flush()
+			self.emu.stdio.write(bytes([value]))
+			self.emu.stdio.flush()
 			return
 		print("MC68681 WRITE:", hex(offset), hex(value))
 		#uc.emu_stop()
@@ -201,6 +268,12 @@ class ScopeEmu():
 		self.running = False
 		self.cycles = 0
 
+		sock = sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+		sock.connect(("127.0.0.1", 1234))
+		self.stdin = sock.makefile("rb")
+		self.stdout = sock.makefile("wb")
+		self.stdout_log = open("stdout.txt", "wb")
+
 	def deliver_interrupt(self, priority: int):
 		orig_sr = self.mu.reg_read(UC_M68K_REG_SR)
 		print("orig_sr", hex(orig_sr))
@@ -260,5 +333,10 @@ class ScopeEmu():
 			print("cycles", self.cycles)
 
 if __name__ == "__main__":
+	import os
+
+	os.system("""gnome-terminal -- sh -c "rlwrap nc -lp 1234; read -p 'connection closed [ENTER to exit]'" &""")
+	time.sleep(0.5)
+
 	emu = ScopeEmu()
 	emu.run()
