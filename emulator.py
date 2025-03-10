@@ -144,7 +144,7 @@ class ScopeEmu():
 		self.mu.mem_map(0x0260_0000, 0x10_0000)
 		# mystery device
 		self.mu.mem_map(0x0360_0000, 0x10_0000)
-		# mystery device 4
+		# mystery device 4 (probably NVRAM)
 		self.mu.mem_map(0x0400_0000, 0x100_0000)
 		# mystery device 5 (probably DRAM)
 		self.mu.mem_map(0x0500_0000, 0x100_0000)
