@@ -89,6 +89,7 @@ class MC68681:
 		assert(size == 1)
 		#print(hex(uc.reg_read(UC_M68K_REG_PC)))
 		if offset == 1:
+			return 0b0000_1100
 			self.foo += 1 # silly
 			if self.foo & 1:
 				return 0b0000_1100  # TXEMT, TXRDY
@@ -190,6 +191,31 @@ class ScopeEmu():
 		self.running = False
 		self.cycles = 0
 
+	def deliver_interrupt(self, priority: int):
+		orig_sr = self.mu.reg_read(UC_M68K_REG_SR)
+		print("orig_sr", hex(orig_sr))
+		int_mask = (orig_sr >> 8) & 7
+		# 7 is non-maskable
+		if priority != 7 and priority <= int_mask: # XXX: this isn't quite right?
+			print("masked")
+			return
+
+		orig_pc = self.mu.reg_read(UC_M68K_REG_PC)
+		orig_sp = self.mu.reg_read(UC_M68K_REG_A7)
+		#print("orig_pc", hex(orig_pc))
+		vector_offset = 0x60 + priority * 4
+		sp = orig_sp - 8
+		self.mu.mem_write(sp, orig_sr.to_bytes(2) + orig_pc.to_bytes(4) + vector_offset.to_bytes(2))
+		vbr = 0x5000000 #self.mu.msr_read(M68K_CR_VBR)
+		vector = int.from_bytes(self.mu.mem_read(vbr + vector_offset, 4))
+		#print("new sp", hex(sp))
+		#print("vector", hex(vector))
+		sr = ((orig_sr & ~0x1700 ) | 0x2000 | (priority << 8))  # is this correct?
+		print("new_sr", hex(sr))
+		self.mu.reg_write(UC_M68K_REG_SR, sr)
+		self.mu.reg_write(UC_M68K_REG_PC, vector)
+		self.mu.reg_write(UC_M68K_REG_A7, sp)
+
 	def run(self):
 		self.running = True
 
@@ -198,7 +224,7 @@ class ScopeEmu():
 
 		try:
 			while self.running:
-				self.mu.ctl_flush_tb()  # unfortunately this seems to be necessary - perhaps a qemu/unicorn bug
+				#self.mu.ctl_flush_tb()  # unfortunately this seems to be necessary - perhaps a qemu/unicorn bug
 				self.mu.emu_start(self.mu.reg_read(UC_M68K_REG_PC), 0, 0, cycles_per_invocation) # TODO: determine reasonable "count" and/or timeout
 				self.cycles += cycles_per_invocation
 				#print("TICK")
@@ -206,27 +232,8 @@ class ScopeEmu():
 				# TODO: figure out if we should fire the interrupt based on some logic:
 				if self.cycles > 24000000:
 					print("TICK")
-					#interrupt = 0x78
-					#interrupt = 0x68
-					orig_sr = self.mu.reg_read(UC_M68K_REG_SR)
-					print("orig_sr", hex(orig_sr))
-					interrupt = 30 # works
-					#interrupt = 25 + (self.i%7)
-					self.i += 1
-					if 1 or not orig_sr & 0x0700:
-						orig_pc = self.mu.reg_read(UC_M68K_REG_PC)
-						orig_sp = self.mu.reg_read(UC_M68K_REG_A7)
-						#print("orig_pc", hex(orig_pc))
-						sp = orig_sp - 8
-						self.mu.mem_write(sp, orig_sr.to_bytes(2) + orig_pc.to_bytes(4) + (interrupt * 4).to_bytes(2))
-						vbr = 0x5000000 #self.mu.msr_read(M68K_CR_VBR)
-						vector = int.from_bytes(self.mu.mem_read(vbr + interrupt*4, 4))
-						#print("new sp", hex(sp))
-						#print("vector", hex(vector))
-						self.mu.reg_write(UC_M68K_REG_SR, ((orig_sr & 0x0700 )| 0x2700)) # is this correct?
-						self.mu.reg_write(UC_M68K_REG_PC, vector)
-						self.mu.reg_write(UC_M68K_REG_A7, sp)
-				
+					self.deliver_interrupt(6)
+
 		except UcError as e:
 			print(e)
 			print("pc", hex(self.mu.reg_read(UC_M68K_REG_PC)))
