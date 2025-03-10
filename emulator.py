@@ -27,7 +27,11 @@ def hook_code(uc, address, size, user_data):
 	print(">>> Tracing instruction at 0x%x, instruction size = 0x%x" % (address, size))
 
 def hook_block(uc: Uc, address, idk, user_data):
-	print(hex(address))#, hex(uc.reg_read(UC_M68K_REG_A7)))#, symbol_lookup.get(address))
+	#print(hex(address))#, hex(uc.reg_read(UC_M68K_REG_A7)))#, symbol_lookup.get(address))
+	if address == 0x10027ac:
+		print("HIT _sysClkRoutine")
+	elif address == 0x1218ee4:
+		print("HIT _tickAnnounce")
 	if 0:#(address == 0x1001dc6 and False) or address == 0x0100a508: # board ID, RAM test
 		print("oops")
 		sp = uc.reg_read(UC_M68K_REG_A7)
@@ -38,9 +42,9 @@ def hook_block(uc: Uc, address, idk, user_data):
 		uc.reg_write(UC_M68K_REG_PC, retaddr)
 		return
 
-def hook_intr(uc: Uc, foo, user_data):
-	print("INTERRUPT", foo)
-	if foo == 256: # RTE?
+def hook_intr(uc: Uc, intno: int, emu: "ScopeEmu"):
+	print("INTERRUPT", intno)
+	if intno == 0x100: # EXCP_RTE
 		print("RTE")
 		sp = uc.reg_read(UC_M68K_REG_A7)
 		#print(uc.mem_read(sp-0x10, 0x20).hex())
@@ -53,6 +57,10 @@ def hook_intr(uc: Uc, foo, user_data):
 		uc.reg_write(UC_M68K_REG_A7, sp+8) # pop
 		uc.reg_write(UC_M68K_REG_SR, sr)
 		uc.reg_write(UC_M68K_REG_PC, pc)
+		return
+
+	print("unhandled interrupt", hex(intno))
+	emu.running = False
 	uc.emu_stop()
 
 def hook_unmapped(uc: Uc, user_data):
@@ -78,8 +86,9 @@ def dip_switch_read(uc, offset: int, size: int, user_data) -> int:
 	return 0xc0 # skip all bootrom tests
 
 class MC68681:
-	def __init__(self, base):
+	def __init__(self, base, emu: "ScopeEmu"):
 		self.base = base
+		self.emu = emu
 		self.foo = 0
 	
 	def uc_map(self, uc: Uc):
@@ -104,6 +113,7 @@ class MC68681:
 			#uc.emu_stop()
 			return 100
 		print("MC68681 READ:", hex(offset))
+		self.emu.running = False
 		uc.emu_stop()
 		raise Exception("TODO")
 		return 0
@@ -170,14 +180,14 @@ class ScopeEmu():
 		self.mu.mem_map(0x0d00_0000, 0x1000)
 		self.mu.mem_write(0x0d000005, b"\xff")
 
-		uart = MC68681(0x00a0_0000)
+		uart = MC68681(0x00a0_0000, self)
 		uart.uc_map(self.mu)
 
 		# tracing all instructions
 		#mu.hook_add(UC_HOOK_CODE, hook_code)
-		#self.mu.hook_add(UC_HOOK_BLOCK, hook_block)
+		self.mu.hook_add(UC_HOOK_BLOCK, hook_block, self)
 
-		self.mu.hook_add(UC_HOOK_INTR, hook_intr)
+		self.mu.hook_add(UC_HOOK_INTR, hook_intr, self)
 
 		self.mu.hook_add(UC_HOOK_MEM_READ_UNMAPPED | UC_HOOK_MEM_WRITE_UNMAPPED | UC_HOOK_MEM_FETCH_UNMAPPED, hook_unmapped)
 
@@ -219,7 +229,7 @@ class ScopeEmu():
 	def run(self):
 		self.running = True
 
-		cycles_per_invocation = 10000
+		cycles_per_invocation = 1000000
 		self.i = 0
 
 		try:
@@ -232,6 +242,8 @@ class ScopeEmu():
 				# TODO: figure out if we should fire the interrupt based on some logic:
 				if self.cycles > 24000000:
 					print("TICK")
+					print(hex(int.from_bytes(self.mu.mem_read(0x0940_0000, 4))))
+					print(hex(int.from_bytes(self.mu.mem_read(0x0960_0000, 4))))
 					self.deliver_interrupt(6)
 
 		except UcError as e:
@@ -244,6 +256,8 @@ class ScopeEmu():
 			print("d0", hex(self.mu.reg_read(UC_M68K_REG_D0)))
 			print("d1", hex(self.mu.reg_read(UC_M68K_REG_D1)))
 			print("d2", hex(self.mu.reg_read(UC_M68K_REG_D2)))
+
+			print("cycles", self.cycles)
 
 if __name__ == "__main__":
 	emu = ScopeEmu()
