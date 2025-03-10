@@ -19,7 +19,7 @@ BOOTROM_SIZE = 0x0004_0000
 SRAM_BASE = 0x0020_0000
 SRAM_SIZE = 0x0004_0000
 
-NVRAM_BASE = 0x0040_0000
+NVRAM_BASE = 0x0400_0000
 NVRAM_SIZE = 0x000A_0000
 
 FLASHROM_BASE = 0x0100_0000
@@ -208,11 +208,8 @@ class ScopeEmu():
 		# SRAM
 		self.mu.mem_map(SRAM_BASE, SRAM_SIZE) # rwx
 
-		# NVRAM
-		self.mu.mem_map(NVRAM_BASE, NVRAM_SIZE) # rwx
-		self.mu.mem_write(NVRAM_BASE, open("dumps/NVRAM.bin", "rb").read(NVRAM_SIZE))
-		# XXX: hack?
-		self.mu.mem_write(NVRAM_BASE, b"\x00")
+		# ???
+		self.mu.mem_map(0x0040_0000, 0x10_0000) # rwx
 
 		# FlashRom
 		self.mu.mem_map(FLASHROM_BASE, FLASHROM_SIZE, UC_PROT_READ | UC_PROT_EXEC)
@@ -222,8 +219,11 @@ class ScopeEmu():
 		self.mu.mem_map(0x0260_0000, 0x10_0000)
 		# mystery device
 		self.mu.mem_map(0x0360_0000, 0x10_0000)
-		# mystery device 4 (probably NVRAM)
-		self.mu.mem_map(0x0400_0000, 0x100_0000)
+
+		# NVRAM (note: RTC not currently implemented)
+		self.mu.mem_map(NVRAM_BASE, 0x100_0000, UC_PROT_READ | UC_PROT_WRITE)
+		self.mu.mem_write(NVRAM_BASE, open("dumps/NVRAM_0x0400_0000.bin", "rb").read(NVRAM_SIZE))
+
 		# mystery device 5 (probably DRAM)
 		self.mu.mem_map(0x0500_0000, 0x100_0000)
 
@@ -236,7 +236,7 @@ class ScopeEmu():
 
 		# mystery device2
 		self.mu.mem_map(0x00e0_0000, 0x10_0000)
-		self.mu.mem_write(0xe00000, b"\x08\x00") # related to board ID
+		self.mu.mem_write(0xe00000, b"\x0a\x00") # related to board ID
 		# mystery device3
 		self.mu.mem_map(0x0180_0000, 0x80_0000)
 		#mu.mem_write(0x1fffffc, b"\xff\xff\xff\xff") # also related to board ID
