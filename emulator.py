@@ -190,8 +190,8 @@ class MC68681:
 			#print("UART:", repr(chr(value)))
 			sys.stderr.buffer.write(bytes([value]))
 			sys.stderr.flush()
-			self.emu.stdio.write(bytes([value]))
-			self.emu.stdio.flush()
+			self.emu.stdout.write(bytes([value]))
+			self.emu.stdout.flush()
 			return
 		print("MC68681 WRITE:", hex(offset), hex(value))
 		#uc.emu_stop()
