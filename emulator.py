@@ -115,11 +115,18 @@ def hook_intr(uc: Uc, intno: int, emu: "ScopeEmu"):
 		pc = int.from_bytes(uc.mem_read(sp+2, 4))
 		vector_offset = int.from_bytes(uc.mem_read(sp+6, 2))
 		print("vector_offset", hex(vector_offset))
+		exc_type = vector_offset>>12
+		if exc_type == 0:
+			sp += 8
+		elif exc_type == 0b1010:
+			sp += 0x20
+		else:
+			raise Exception("TODO")
 		# "vector offset" here, see MC68020 datasheet "6.4 EXCEPTION STACK FRAME FORMAT"
 		#print("sp", hex(sp))
 		#print("sr", hex(sr))
 		print("pc", hex(pc))
-		uc.reg_write(UC_M68K_REG_A7, sp+8) # pop
+		uc.reg_write(UC_M68K_REG_A7, sp) # pop
 		uc.reg_write(UC_M68K_REG_SR, sr)
 		uc.reg_write(UC_M68K_REG_PC, pc)
 		return
@@ -147,7 +154,7 @@ def dip_switch_read(uc, offset: int, size: int, user_data) -> int:
 	assert(offset == 0)
 	assert(size == 1)
 	print("DIP switch read")
-	#return 0x20 # 0x20 is "normal" config
+	#return 0x20 # 0x20 is "normal" config (I think?)
 	return 0xc0 # skip all bootrom tests, skip startup diagnostics
 
 class MC68681:
@@ -162,6 +169,9 @@ class MC68681:
 	def reg_read(self, uc: Uc, offset: int, size: int, user_data) -> int:
 		assert(size == 1)
 		#print(hex(uc.reg_read(UC_M68K_REG_PC)))
+		#if offset == 0:
+		#	# TODO
+		#	return 0
 		if offset == 1:
 			return 0b0000_1100
 			self.foo += 1 # silly
@@ -227,28 +237,36 @@ class ScopeEmu():
 		# mystery device 5 (probably DRAM)
 		self.mu.mem_map(0x0500_0000, 0x100_0000)
 
+		# mystery device
+		self.mu.mem_map(0x0700_0000, 0x100_0000)
+
 		# set up MMIO devices
 		self.mu.mmio_map(0x0060_0000, 0x1000, None, None, dbg_7seg_write, None)
 		self.mu.mmio_map(0x0080_0000, 0x1000, dip_switch_read, None, None, None)
 
 		# mystery device  - I think it's an interrupt controller
+		# 0x0960_0000 = interrupt masking/routing
+		# 0x0940_0000 = "pending interrupts"
 		self.mu.mem_map(0x0900_0000, 0x100_0000)
 
 		# mystery device2
 		self.mu.mem_map(0x00e0_0000, 0x10_0000)
-		self.mu.mem_write(0xe00000, b"\x0a\x00") # related to board ID
+		self.mu.mem_write(0xe00000, b"\x0a\x00") # related to board ID. LSB says whether its colour
 		# mystery device3
 		self.mu.mem_map(0x0180_0000, 0x80_0000)
 		#mu.mem_write(0x1fffffc, b"\xff\xff\xff\xff") # also related to board ID
 
 		# mystery
 		self.mu.mem_map(0x0a00_0000, 0x100_0000)
-		# mystery device d
+		# mystery device d - DRAM controller perhaps?
 		self.mu.mem_map(0x0d00_0000, 0x1000)
 		self.mu.mem_write(0x0d000005, b"\xff")
 
 		uart = MC68681(0x00a0_0000, self)
 		uart.uc_map(self.mu)
+
+		#uart2 = MC68681(0x00c0_0000, self)
+		#uart2.uc_map(self.mu)
 
 		# tracing all instructions
 		#mu.hook_add(UC_HOOK_CODE, hook_code)
@@ -307,9 +325,31 @@ class ScopeEmu():
 
 		try:
 			while self.running:
-				#self.mu.ctl_flush_tb()  # unfortunately this seems to be necessary - perhaps a qemu/unicorn bug
-				self.mu.emu_start(self.mu.reg_read(UC_M68K_REG_PC), 0, 0, cycles_per_invocation) # TODO: determine reasonable "count" and/or timeout
-				self.cycles += cycles_per_invocation
+				try:
+					#self.mu.ctl_flush_tb()  # unfortunately this seems to be necessary - perhaps a qemu/unicorn bug
+					self.mu.emu_start(self.mu.reg_read(UC_M68K_REG_PC), 0, 0, cycles_per_invocation) # TODO: determine reasonable "count" and/or timeout
+					self.cycles += cycles_per_invocation
+				except UcError as e:
+					# dunno if this works properly
+					if e.errno == UC_ERR_READ_UNMAPPED:
+						print("HANDLING BUS ERROR")
+						#time.sleep(1)
+						vbr = 0x200000 # we can guess, since this happens during bootrom's BERR test
+						vector_offset = 8
+						orig_pc = self.mu.reg_read(UC_M68K_REG_PC)
+						orig_sp = self.mu.reg_read(UC_M68K_REG_A7)
+						orig_sr = self.mu.reg_read(UC_M68K_REG_SR)
+						orig_pc += 2 # XXX: skip over the problematic instruction - assumes instruction length
+						sp = orig_sp - 0x20
+						vector = int.from_bytes(self.mu.mem_read(vbr + vector_offset, 4))
+						sr = orig_sr # TODO?
+						self.mu.mem_write(sp, orig_sr.to_bytes(2) + orig_pc.to_bytes(4) + ((0b1010 << 12) | vector_offset).to_bytes(2))
+						# TODO: other berr fields
+						self.mu.reg_write(UC_M68K_REG_SR, sr)
+						self.mu.reg_write(UC_M68K_REG_PC, vector)
+						self.mu.reg_write(UC_M68K_REG_A7, sp)
+						continue
+					raise e
 				#print("TICK")
 
 				# TODO: figure out if we should fire the interrupt based on some logic:

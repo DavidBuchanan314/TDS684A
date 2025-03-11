@@ -29,10 +29,12 @@ The memory bus, from the perspective of the MC68020 CPU
 0x0040_0000 - 0x????_????: ???
 0x0060_0000 - 0x????_????: 7-segment debug display
 0x0080_0000 - 0x????_????: config DIP switches
-0x00a0_0000 - 0x00a0_000f: RS232 UART - MC68681
-0x00c0_0000 - 0x00c0_000f: Debug UART - Supposed to be a MC68681 but there isn't one present by default!
+0x00a0_0000 - 0x00a0_000f: RS232 UART - MC68681 (there's another one somewhere, for debug)
+0x00c0_0000 - 0x00c?_????: GPIB
 0x0100_0000 - 0x012f_ffff: FlashRom - Am28F020 256KiB (90ns), x12 (!), totaling 3MiB
 0x0400_0000 - 0x????_????: NVRAM - DS1486-150 (RTC + 128KiB), DS1650Y-100 (512KiB) - the RTC one comes first, not 100% sure where the other one is (maybe right after? would be weird not to be aligned though).
 0x0700_0000 - 0x07ff_ffff: ???? _readAddr reads from this, wrapped in calls to _busRequest/_busRelease - maybe D1 bus?
+0x075e_d000 - 0x????_????: TLC34075 video chip
+0x0800_0000 - 0x????_????: Maybe video related - framebuffer?
 0x0a00_0000 - 0x????_????: main DRAM - unsure of capacity
 ```

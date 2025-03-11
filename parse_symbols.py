@@ -25,4 +25,4 @@ for i in range(num_symbols):
 	name_end = data.index(b"\x00", name_off)
 	name = data[name_off:name_end].decode()
 	#if symbol_type == 0x500:
-	print(name, hex(symbol_type), hex(symbol_value))
+	print(name, hex(symbol_value))
